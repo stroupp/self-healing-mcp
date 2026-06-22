@@ -1,0 +1,23 @@
+{
+  "name": "atr-healer",
+  "description": "ATR self-healing runner and MCP server for Selenide + Cucumber regression tests.",
+  "version": "0.0.1",
+  "private": true,
+  "bin": {
+    "atr": "./out/atrCli.js",
+    "atr-mcp": "./out/mcpServer.js"
+  },
+  "scripts": {
+    "atr": "node ./out/atrCli.js",
+    "mcp": "node ./out/mcpServer.js",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.2",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  }
+}

@@ -1,0 +1,270 @@
+#!/usr/bin/env node
+import path from 'path';
+import { loadAtrKnowledge, summarizeKnowledge } from './atr/knowledgeBase';
+import { analyzeProject } from './atr/projectAnalyzer';
+import { selfHeal } from './atr/selfHeal';
+import { auditTestIds } from './atr/testIdAuditor';
+import { writeTestIdAuditReport } from './atr/testIdReportWriter';
+import { AiProvider, AtrCliOptions } from './atr/types';
+
+type AtrMode = 'self-heal' | 'knowledge' | 'analyze' | 'audit-test-ids';
+
+interface ParsedArgs {
+  args: string[];
+  mode: AtrMode;
+}
+
+async function main(): Promise<void> {
+  const parsed = parseMode(process.argv.slice(2));
+
+  if (!parsed) {
+    printHelp();
+    return;
+  }
+
+  if (parsed.mode === 'knowledge') {
+    await runKnowledgeMode(parsed.args);
+    return;
+  }
+
+  if (parsed.mode === 'analyze') {
+    await runAnalyzeMode(parsed.args);
+    return;
+  }
+
+  if (parsed.mode === 'audit-test-ids') {
+    await runAuditTestIdsMode(parsed.args);
+    return;
+  }
+
+  const options = parseSelfHealArgs(parsed.args);
+  if (!options) {
+    printHelp();
+    return;
+  }
+
+  const report = await selfHeal(options);
+  console.log(`ATR healing finished with status: ${report.status}`);
+  console.log(`Report: ${report.reportPath}`);
+
+  if (report.status !== 'passed') {
+    process.exitCode = 1;
+  }
+}
+
+async function runKnowledgeMode(args: string[]): Promise<void> {
+  const read = argReader(args);
+  const workspaceRoot = path.resolve(read('--workspace') ?? process.cwd());
+  const knowledge = await loadAtrKnowledge({
+    workspaceRoot,
+    knowledgeFile: read('--knowledge-file')
+  });
+  console.log(JSON.stringify(summarizeKnowledge(knowledge), null, 2));
+}
+
+async function runAnalyzeMode(args: string[]): Promise<void> {
+  const read = argReader(args);
+  const workspaceRoot = path.resolve(read('--workspace') ?? process.cwd());
+  const knowledge = await loadAtrKnowledge({
+    workspaceRoot,
+    knowledgeFile: read('--knowledge-file')
+  });
+  const analysis = await analyzeProject(workspaceRoot, knowledge);
+  console.log(JSON.stringify(analysis, null, 2));
+}
+
+async function runAuditTestIdsMode(args: string[]): Promise<void> {
+  const read = argReader(args);
+  const workspaceRoot = path.resolve(read('--workspace') ?? process.cwd());
+  const knowledge = await loadAtrKnowledge({
+    workspaceRoot,
+    knowledgeFile: read('--knowledge-file')
+  });
+  const report = await auditTestIds(
+    {
+      workspaceRoot,
+      pageName: read('--page'),
+      projectPrefix: read('--project-prefix'),
+      include: readAll(args, '--include'),
+      maxFiles: Number(read('--max-files') ?? '200')
+    },
+    knowledge
+  );
+  const reportPath = await writeTestIdAuditReport(report, read('--report-dir') ?? 'target/atr-healer/reports');
+
+  console.log(`ATR test-id audit completed.`);
+  console.log(`Scanned files: ${report.scannedFiles.length}`);
+  console.log(`Existing test IDs: ${report.existing.length}`);
+  console.log(`Duplicate test IDs: ${report.duplicates.length}`);
+  console.log(`Proposals: ${report.proposals.length}`);
+  console.log(`Report: ${reportPath}`);
+}
+
+function parseMode(args: string[]): ParsedArgs | undefined {
+  if (args.includes('--help') || args.includes('-h')) {
+    return undefined;
+  }
+
+  const modeIndex = args.indexOf('--mode');
+  if (modeIndex >= 0) {
+    const mode = args[modeIndex + 1] as AtrMode | undefined;
+    const rest = args.filter((_, index) => index !== modeIndex && index !== modeIndex + 1);
+    if (mode === 'self-heal' || mode === 'knowledge' || mode === 'analyze' || mode === 'audit-test-ids') {
+      return {
+        mode,
+        args: rest
+      };
+    }
+
+    throw new Error(`Unsupported --mode: ${mode}`);
+  }
+
+  return {
+    mode: 'self-heal',
+    args
+  };
+}
+
+function parseSelfHealArgs(args: string[]): AtrCliOptions | undefined {
+  const read = argReader(args);
+  const testCommand = read('--test-command');
+  if (!testCommand) {
+    return undefined;
+  }
+
+  const provider = read('--ai-provider') ?? 'ollama';
+  if (provider !== 'ollama' && provider !== 'openai-compatible' && provider !== 'dashscope') {
+    throw new Error(`Unsupported --ai-provider: ${provider}`);
+  }
+
+  const profile = read('--ai-profile');
+  const defaults = profile === 'alibaba-free'
+    ? alibabaFreeDefaults()
+    : defaultAiDefaults();
+
+  return {
+    workspaceRoot: path.resolve(read('--workspace') ?? process.cwd()),
+    testCommand,
+    featureFile: read('--feature'),
+    scenarioName: read('--scenario'),
+    htmlFile: read('--html-file'),
+    maxAttempts: Number(read('--max-attempts') ?? defaults.maxAttempts),
+    reportDir: read('--report-dir') ?? 'target/atr-healer/reports',
+    aiEndpoint: read('--ai-endpoint') ?? defaults.endpoint,
+    aiModel: read('--ai-model') ?? defaults.model,
+    aiProvider: provider as AiProvider,
+    aiApiKeyEnv: read('--ai-api-key-env') ?? defaultApiKeyEnv(provider as AiProvider),
+    aiMaxCallsPerRun: Number(read('--ai-max-calls-per-run') ?? defaults.maxCallsPerRun),
+    aiDailyCallLimit: Number(read('--ai-daily-call-limit') ?? defaults.dailyCallLimit),
+    aiMaxPromptChars: Number(read('--ai-max-prompt-chars') ?? defaults.maxPromptChars),
+    aiMaxOutputTokens: Number(read('--ai-max-output-tokens') ?? defaults.maxOutputTokens),
+    approvalMode: read('--approval-mode') === 'auto-test-files' ? 'auto-test-files' : 'report'
+  };
+}
+
+function argReader(args: string[]): (name: string) => string | undefined {
+  return (name: string): string | undefined => {
+    const index = args.indexOf(name);
+    return index >= 0 ? args[index + 1] : undefined;
+  };
+}
+
+function readAll(args: string[], name: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < args.length; index++) {
+    if (args[index] === name && args[index + 1]) {
+      values.push(args[index + 1]);
+    }
+  }
+
+  return values;
+}
+
+function defaultAiDefaults(): {
+  endpoint: string;
+  model: string;
+  maxAttempts: string;
+  maxCallsPerRun: string;
+  dailyCallLimit: string;
+  maxPromptChars: string;
+  maxOutputTokens: string;
+} {
+  return {
+    endpoint: 'http://localhost:11434/api/chat',
+    model: 'qwen3',
+    maxAttempts: '3',
+    maxCallsPerRun: '3',
+    dailyCallLimit: '50',
+    maxPromptChars: '12000',
+    maxOutputTokens: '1200'
+  };
+}
+
+function alibabaFreeDefaults(): ReturnType<typeof defaultAiDefaults> {
+  return {
+    endpoint: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+    model: 'qwen3.7-plus',
+    maxAttempts: '2',
+    maxCallsPerRun: '2',
+    dailyCallLimit: '20',
+    maxPromptChars: '8000',
+    maxOutputTokens: '800'
+  };
+}
+
+function defaultApiKeyEnv(provider: AiProvider): string | undefined {
+  return provider === 'openai-compatible' || provider === 'dashscope' ? 'DASHSCOPE_API_KEY' : undefined;
+}
+
+function printHelp(): void {
+  console.log(`ATR runner
+
+Usage:
+  atr --test-command "<command>" [self-heal options]
+  atr --mode knowledge [options]
+  atr --mode analyze [options]
+  atr --mode audit-test-ids [options]
+
+Modes:
+  self-heal       Default. Run, heal, rerun, and report a Cucumber/Selenide scenario.
+  knowledge       Print normalized ATR knowledge summary as JSON.
+  analyze         Inspect project structure as JSON.
+  audit-test-ids  Report missing React data-test-id candidates. Does not edit files.
+
+Common options:
+  --workspace        Workspace root. Defaults to current directory.
+  --knowledge-file   Optional knowledge markdown path.
+  --report-dir       Report output directory. Defaults to target/atr-healer/reports.
+
+Audit options:
+  --page             Page name used in proposed IDs.
+  --project-prefix   Project prefix used in proposed IDs.
+  --include          Workspace-relative React file to scan. Can be repeated.
+  --max-files        Max React files to scan. Defaults to 200.
+
+Self-heal required:
+  --test-command     Command that runs the failed Cucumber/Selenide test.
+
+Self-heal options:
+  --feature          Feature file path for reporting/context.
+  --scenario         Scenario name for reporting/context.
+  --html-file        HTML snippet file captured from the failed page.
+  --max-attempts     Maximum retry attempts. Defaults to 3.
+  --ai-endpoint      Local LLM endpoint. Defaults to http://localhost:11434/api/chat.
+  --ai-model         Local LLM model. Defaults to qwen3.
+  --ai-provider      ollama, openai-compatible, or dashscope. Defaults to ollama.
+  --ai-profile       Optional preset. Use alibaba-free for conservative Alibaba/Qwen limits.
+  --ai-api-key-env   Environment variable containing API key.
+  --approval-mode    report or auto-test-files. Defaults to report.
+
+Examples:
+  atr --mode analyze --workspace "C:\\project"
+  atr --mode audit-test-ids --workspace "C:\\project" --page Transfer --project-prefix transfer --include "src/App.jsx"
+  atr --test-command "mvn test" --scenario "Successful transfer" --html-file target/failed-page.html --approval-mode auto-test-files
+`);
+}
+
+main().catch(error => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});

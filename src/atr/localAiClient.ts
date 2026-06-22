@@ -1,0 +1,206 @@
+import { AiProvider, AtrCliOptions, FailureContext, HealCandidate } from './types';
+import { assertAiBudget, recordAiCall } from './usageGuard';
+
+export async function askForHealCandidate(
+  options: AtrCliOptions,
+  failure: FailureContext,
+  htmlSnippet: string | undefined,
+  attemptHistory: string
+): Promise<HealCandidate> {
+  const compactRawTail = tail(failure.rawTail, 2500);
+  const compactHtml = htmlSnippet ? htmlSnippet.slice(0, 3500) : undefined;
+  const compactHistory = tail(attemptHistory || 'none', 1200);
+
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    {
+      role: 'system',
+      content: [
+        'You are ATR, an enterprise UI test automation self-healing assistant.',
+        'Target stack: React, Selenide Java Page Objects, Cucumber Gherkin.',
+        'Prefer data-test-id selectors over CSS hierarchy selectors.',
+        'Never use real customer data, account numbers, credentials, IBANs, or card numbers.',
+        'Return only JSON matching this TypeScript shape:',
+        '{ "status": "locator_fix|helper_fix|gherkin_fix|not_healable|needs_more_context", "confidence": "low|medium|high", "reasoning": string, "changedFiles": [{ "path": string, "oldText": string, "newText": string, "reason": string }], "suggestedCommands": string[] }',
+        'If you cannot identify a safe exact edit, return needs_more_context or not_healable with empty changedFiles.'
+      ].join(' ')
+    },
+    {
+      role: 'user',
+      content: [
+        'Heal this failed Cucumber/Selenide run.',
+        `Feature file: ${options.featureFile ?? 'unknown'}`,
+        `Scenario: ${options.scenarioName ?? 'unknown'}`,
+        `Failure summary: ${failure.summary}`,
+        `Failed step: ${failure.failedStep ?? 'unknown'}`,
+        `Broken locator: ${failure.locator ?? 'unknown'}`,
+        `Exception: ${failure.exception ?? 'unknown'}`,
+        `Stack hint: ${failure.stackHint ?? 'unknown'}`,
+        `Failure output tail:\n${compactRawTail}`,
+        `HTML snippet:\n${compactHtml ?? 'not provided'}`,
+        `Previous attempts:\n${compactHistory}`
+      ].join('\n\n')
+    }
+  ];
+
+  await assertAiBudget(options, messages);
+  await recordAiCall(options);
+
+  const content = await sendMessages(options, messages);
+
+  return parseCandidate(content);
+}
+
+function tail(value: string, maxLength: number): string {
+  return value.length > maxLength ? value.slice(value.length - maxLength) : value;
+}
+
+async function sendMessages(
+  options: AtrCliOptions,
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+): Promise<string> {
+  const apiKey = options.aiApiKeyEnv ? process.env[options.aiApiKeyEnv] : undefined;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+
+  const response = await fetch(resolveEndpoint(options), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(buildPayload(options, messages))
+  });
+
+  if (!response.ok) {
+    throw new Error(`AI request failed with ${response.status}: ${await response.text()}`);
+  }
+
+  const json = await response.json() as unknown;
+  return extractContent(options.aiProvider, json);
+}
+
+function resolveEndpoint(options: AtrCliOptions): string {
+  if (options.aiProvider === 'openai-compatible') {
+    const trimmed = options.aiEndpoint.replace(/\/+$/, '');
+    if (trimmed.endsWith('/v1')) {
+      return `${trimmed}/chat/completions`;
+    }
+
+    return options.aiEndpoint;
+  }
+
+  if (options.aiProvider !== 'dashscope') {
+    return options.aiEndpoint;
+  }
+
+  const trimmed = options.aiEndpoint.replace(/\/+$/, '');
+  if (trimmed.endsWith('/api/v1')) {
+    return `${trimmed}/services/aigc/multimodal-generation/generation`;
+  }
+
+  return options.aiEndpoint;
+}
+
+function buildPayload(
+  options: AtrCliOptions,
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+): unknown {
+  if (options.aiProvider === 'dashscope') {
+    return {
+      model: options.aiModel,
+      input: {
+        messages: messages.map(message => ({
+          role: message.role,
+          content: [
+            {
+              text: message.content
+            }
+          ]
+        }))
+      },
+      parameters: {
+        temperature: 0,
+        max_tokens: options.aiMaxOutputTokens
+      }
+    };
+  }
+
+  if (options.aiProvider === 'openai-compatible') {
+    return {
+      model: options.aiModel,
+      temperature: 0,
+      max_tokens: options.aiMaxOutputTokens,
+      response_format: {
+        type: 'json_object'
+      },
+      messages
+    };
+  }
+
+  return {
+    model: options.aiModel,
+    stream: false,
+    options: {
+      temperature: 0,
+      num_predict: options.aiMaxOutputTokens
+    },
+    messages
+  };
+}
+
+function extractContent(provider: AiProvider, json: unknown): string {
+  if (!json || typeof json !== 'object') {
+    return '';
+  }
+
+  const record = json as Record<string, unknown>;
+  if (provider === 'dashscope') {
+    const output = record.output as Record<string, unknown> | undefined;
+    const choices = output?.choices as Array<Record<string, unknown>> | undefined;
+    const message = choices?.[0]?.message as Record<string, unknown> | undefined;
+    const content = message?.content as Array<Record<string, unknown>> | undefined;
+    const firstText = content?.find(item => typeof item.text === 'string')?.text;
+    return typeof firstText === 'string' ? firstText : '';
+  }
+
+  if (provider === 'ollama') {
+    const message = record.message as Record<string, unknown> | undefined;
+    return typeof message?.content === 'string' ? message.content : '';
+  }
+
+  const choices = record.choices as Array<Record<string, unknown>> | undefined;
+  const message = choices?.[0]?.message as Record<string, unknown> | undefined;
+  return typeof message?.content === 'string' ? message.content : '';
+}
+
+function parseCandidate(content: string): HealCandidate {
+  const normalized = extractJson(stripCodeFence(content.trim()));
+  const parsed = JSON.parse(normalized) as HealCandidate;
+
+  return {
+    status: parsed.status,
+    confidence: parsed.confidence,
+    reasoning: parsed.reasoning,
+    changedFiles: Array.isArray(parsed.changedFiles) ? parsed.changedFiles : [],
+    suggestedCommands: Array.isArray(parsed.suggestedCommands) ? parsed.suggestedCommands : []
+  };
+}
+
+function stripCodeFence(value: string): string {
+  return value
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '');
+}
+
+function extractJson(value: string): string {
+  const firstBrace = value.indexOf('{');
+  const lastBrace = value.lastIndexOf('}');
+
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return value.slice(firstBrace, lastBrace + 1);
+  }
+
+  return value;
+}

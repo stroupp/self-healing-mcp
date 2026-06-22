@@ -1,0 +1,4 @@
+com\example\mockbanking\pages\TransferPage.class
+com\example\mockbanking\hooks\FailureHooks.class
+com\example\mockbanking\steps\TransferSteps.class
+com\example\mockbanking\RunCucumberTest.class

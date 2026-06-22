@@ -1,0 +1,53 @@
+name: ATR Enterprise UI Automation
+version: 1.0.0
+schema: v1
+
+models:
+  - name: Qwen Alibaba DashScope
+    provider: openai
+    model: qwen3.7-plus
+    apiBase: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+    apiKey: ${{ secrets.DASHSCOPE_API_KEY }}
+    roles:
+      - chat
+      - edit
+      - apply
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0
+      maxTokens: 800
+    requestOptions:
+      timeout: 60000
+
+  - name: Qwen3 Local Ollama
+    provider: ollama
+    model: qwen3
+    apiBase: http://localhost:11434
+    roles:
+      - chat
+      - edit
+      - apply
+    capabilities:
+      - tool_use
+    defaultCompletionOptions:
+      temperature: 0
+
+rules:
+  - You work on enterprise UI test automation using React, Selenide, Java, and Cucumber.
+  - Prefer stable data-test-id selectors over CSS hierarchy selectors.
+  - Never use real customer data, account numbers, IBANs, card numbers, credentials, or production secrets.
+  - Keep smoke tests short, stable, and business-critical.
+  - For self-healing, prefer running ATR CLI or ATR MCP tools rather than guessing from chat alone.
+  - To protect free-tier Alibaba usage, prefer ATR CLI with --ai-profile alibaba-free for self-healing loops.
+  - Do not modify production React behavior while adding data-test-id attributes.
+  - Explain intended file changes before applying them.
+
+prompts:
+  - uses: file://C:/Users/serka/test deneme/docs/continue-prompts.md
+
+mcpServers:
+  - name: atr-local
+    command: node
+    args:
+      - C:/Users/serka/test deneme/out/mcpServer.js

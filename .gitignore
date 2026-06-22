@@ -1,0 +1,21 @@
+# Node dependencies
+node_modules/
+
+# Build output
+out/
+
+# ATR knowledge file should remain local
+docs/knowledge.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+
+# Temporary files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
