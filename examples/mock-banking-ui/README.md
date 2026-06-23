@@ -122,6 +122,3 @@ Recommended order:
 
 Before running the ATR task, replace `<workspace-id>` in `.vscode/tasks.json` and set:
 
-```powershell
-$env:DASHSCOPE_API_KEY = "sk-ws-H.ILEYIM.tC4q.MEUCIQDr2wSIGyAHjS1EVR4lNqcnze9MDVpnDHJNvTPRxLtd2QIgQSoAOKoDNv4uTyelWHV4mU_DUJA9FRcZX7JpuTxUUCo"
-```
