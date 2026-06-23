@@ -49,6 +49,8 @@ atr --mode mcp-config --optional-tools true
 
 `atr --mode mcp-config` prints MCP configuration JSON that can be pasted into Copilot/Continue MCP settings.
 
+Before self-healing, the target test project should have a Cucumber failure hook that writes `target/failed-page.html`. If it is missing, use the installed `docs/atr-failure-hook.md` instructions to add it under `src/test/**` before running ATR.
+
 Run the CLI:
 
 ```powershell

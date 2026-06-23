@@ -8,12 +8,14 @@ Run the requested Cucumber/Selenide feature.
 
 Workflow:
 1. Determine the narrowest test command for the feature or scenario.
-2. Run the test.
-3. If it passes, report the command and result.
-4. If it fails for a locator issue, use ATR MCP/CLI to heal it.
-5. If it fails for non-locator reasons, stop and explain the failure.
-6. Never edit production UI source during automatic healing.
-7. Provide final status and ATR report path if ATR ran.
+2. Check whether the project has a Cucumber failure hook that writes `target/failed-page.html`.
+3. If the hook is missing, add/configure it automatically under `src/test/**` using `docs/atr-failure-hook.md`.
+4. Run the test.
+5. If it passes, report the command and result.
+6. If it fails for a locator/helper issue, use ATR MCP/CLI to heal it.
+7. If it fails for unrelated reasons, stop and explain the failure.
+8. Never edit production UI source during automatic healing.
+9. Provide final status and ATR report path if ATR ran.
 
 Example requests:
 

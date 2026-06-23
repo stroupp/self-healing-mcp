@@ -21,6 +21,7 @@
     "templates",
     "docs/atr-knowledge-architecture.md",
     "docs/copilot-customizations.md",
+    "docs/atr-failure-hook.md",
     "README.md",
     "LICENSE"
   ],
