@@ -51,6 +51,34 @@ atr --mode mcp-config --optional-tools true
 
 Before self-healing, the target test project should have a Cucumber failure hook that writes `target/failed-page.html`. If it is missing, use the installed `docs/atr-failure-hook.md` instructions to add it under `src/test/**` before running ATR.
 
+## Local Coder LLM
+
+For an internal OpenAI-compatible local coder model, use the `local-coder` profile. Keep private endpoints and cookies in environment variables:
+
+```powershell
+$env:ATR_LOCAL_CODER_ENDPOINT = "https://<local-llm-host>/v1/chat/completions"
+$env:ATR_LOCAL_CODER_COOKIE = "<cookie-name>=<cookie-value>"
+
+atr --workspace "C:\path\to\test-project" `
+  --test-command ".\mvnw.cmd test" `
+  --feature "src/test/resources/features/example.feature" `
+  --scenario "Scenario name" `
+  --html-file "target/failed-page.html" `
+  --approval-mode auto-test-files `
+  --ai-profile local-coder `
+  --ai-endpoint "$env:ATR_LOCAL_CODER_ENDPOINT" `
+  --ai-cookie-env ATR_LOCAL_CODER_COOKIE
+```
+
+`local-coder` defaults:
+
+- provider: `openai-compatible`
+- model: `ONIKS`
+- temperature: `0.6`
+- max output tokens: `163849`
+- JSON response format parameter: disabled
+- API call logs: `target/atr-healer/ai-logs`
+
 Run the CLI:
 
 ```powershell

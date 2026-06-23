@@ -276,15 +276,17 @@ function parseSelfHealArgs(args: string[]): AtrCliOptions | undefined {
     return undefined;
   }
 
-  const provider = read('--ai-provider') ?? 'ollama';
+  const profile = read('--ai-profile');
+  const provider = read('--ai-provider') ?? defaultProvider(profile);
   if (provider !== 'ollama' && provider !== 'openai-compatible' && provider !== 'dashscope') {
     throw new Error(`Unsupported --ai-provider: ${provider}`);
   }
 
-  const profile = read('--ai-profile');
   const defaults = profile === 'alibaba-free'
     ? alibabaFreeDefaults()
-    : defaultAiDefaults();
+    : profile === 'local-coder'
+      ? localCoderDefaults()
+      : defaultAiDefaults();
 
   return {
     workspaceRoot: path.resolve(read('--workspace') ?? process.cwd()),
@@ -297,7 +299,10 @@ function parseSelfHealArgs(args: string[]): AtrCliOptions | undefined {
     aiEndpoint: read('--ai-endpoint') ?? defaults.endpoint,
     aiModel: read('--ai-model') ?? defaults.model,
     aiProvider: provider as AiProvider,
-    aiApiKeyEnv: read('--ai-api-key-env') ?? defaultApiKeyEnv(provider as AiProvider),
+    aiApiKeyEnv: read('--ai-api-key-env') ?? defaultApiKeyEnv(provider as AiProvider, profile),
+    aiCookieEnv: read('--ai-cookie-env') ?? defaults.cookieEnv,
+    aiTemperature: Number(read('--ai-temperature') ?? defaults.temperature),
+    aiUseJsonResponseFormat: (read('--ai-use-json-response-format') ?? defaults.useJsonResponseFormat) === 'true',
     aiMaxCallsPerRun: Number(read('--ai-max-calls-per-run') ?? defaults.maxCallsPerRun),
     aiDailyCallLimit: Number(read('--ai-daily-call-limit') ?? defaults.dailyCallLimit),
     aiMaxPromptChars: Number(read('--ai-max-prompt-chars') ?? defaults.maxPromptChars),
@@ -305,6 +310,12 @@ function parseSelfHealArgs(args: string[]): AtrCliOptions | undefined {
     aiLogDir: read('--ai-log-dir') ?? 'target/atr-healer/ai-logs',
     approvalMode: read('--approval-mode') === 'auto-test-files' ? 'auto-test-files' : 'report'
   };
+}
+
+function defaultProvider(profile?: string): AiProvider {
+  return profile === 'alibaba-free' || profile === 'local-coder'
+    ? 'openai-compatible'
+    : 'ollama';
 }
 
 function argReader(args: string[]): (name: string) => string | undefined {
@@ -333,6 +344,9 @@ function defaultAiDefaults(): {
   dailyCallLimit: string;
   maxPromptChars: string;
   maxOutputTokens: string;
+  temperature: string;
+  useJsonResponseFormat: string;
+  cookieEnv?: string;
 } {
   return {
     endpoint: 'http://localhost:11434/api/chat',
@@ -341,7 +355,9 @@ function defaultAiDefaults(): {
     maxCallsPerRun: '3',
     dailyCallLimit: '50',
     maxPromptChars: '12000',
-    maxOutputTokens: '1200'
+    maxOutputTokens: '1200',
+    temperature: '0',
+    useJsonResponseFormat: 'false'
   };
 }
 
@@ -353,11 +369,32 @@ function alibabaFreeDefaults(): ReturnType<typeof defaultAiDefaults> {
     maxCallsPerRun: '2',
     dailyCallLimit: '20',
     maxPromptChars: '8000',
-    maxOutputTokens: '800'
+    maxOutputTokens: '800',
+    temperature: '0',
+    useJsonResponseFormat: 'true'
   };
 }
 
-function defaultApiKeyEnv(provider: AiProvider): string | undefined {
+function localCoderDefaults(): ReturnType<typeof defaultAiDefaults> {
+  return {
+    endpoint: process.env.ATR_LOCAL_CODER_ENDPOINT ?? 'http://localhost:8000/v1/chat/completions',
+    model: 'ONIKS',
+    maxAttempts: '3',
+    maxCallsPerRun: '999',
+    dailyCallLimit: '999999',
+    maxPromptChars: '1000000',
+    maxOutputTokens: '163849',
+    temperature: '0.6',
+    useJsonResponseFormat: 'false',
+    cookieEnv: 'ATR_LOCAL_CODER_COOKIE'
+  };
+}
+
+function defaultApiKeyEnv(provider: AiProvider, profile?: string): string | undefined {
+  if (profile === 'local-coder') {
+    return undefined;
+  }
+
   return provider === 'openai-compatible' || provider === 'dashscope' ? 'DASHSCOPE_API_KEY' : undefined;
 }
 
@@ -408,8 +445,11 @@ Self-heal options:
   --ai-endpoint      Local LLM endpoint. Defaults to http://localhost:11434/api/chat.
   --ai-model         Local LLM model. Defaults to qwen3.
   --ai-provider      ollama, openai-compatible, or dashscope. Defaults to ollama.
-  --ai-profile       Optional preset. Use alibaba-free for conservative Alibaba/Qwen limits.
+  --ai-profile       Optional preset. Use alibaba-free or local-coder.
   --ai-api-key-env   Environment variable containing API key.
+  --ai-cookie-env    Environment variable containing Cookie header for local/private LLM routes.
+  --ai-temperature   Model temperature. Defaults depend on profile.
+  --ai-use-json-response-format true/false. Defaults true for alibaba-free, false for local-coder.
   --ai-log-dir       Directory for one JSON log per AI API request. Defaults to target/atr-healer/ai-logs.
   --approval-mode    report or auto-test-files. Defaults to report.
 
@@ -420,6 +460,7 @@ Examples:
   atr --mode validate --workspace "C:\\project" --entry-file "src/pages/Transfer.tsx" --follow-imports true --feature "src/test/resources/features/transfer.feature"
   atr --mode init --workspace "C:\\project"
   atr --mode mcp-config --optional-tools true
+  atr --test-command ".\\mvnw.cmd test" --ai-profile local-coder --ai-endpoint "$env:ATR_LOCAL_CODER_ENDPOINT" --ai-cookie-env ATR_LOCAL_CODER_COOKIE --approval-mode auto-test-files
   atr --test-command "mvn test" --scenario "Successful transfer" --html-file target/failed-page.html --approval-mode auto-test-files
 `);
 }

@@ -21,10 +21,13 @@ const selfHealSchema = {
   approvalMode: z.enum(['report', 'auto-test-files']).default('report'),
   maxAttempts: z.number().int().positive().max(5).default(2),
   aiProvider: z.enum(['ollama', 'openai-compatible', 'dashscope']).default('openai-compatible'),
-  aiProfile: z.enum(['default', 'alibaba-free']).default('alibaba-free'),
+  aiProfile: z.enum(['default', 'alibaba-free', 'local-coder']).default('alibaba-free'),
   aiModel: z.string().default('qwen3.7-plus'),
   aiEndpoint: z.string().default('https://dashscope-intl.aliyuncs.com/compatible-mode/v1'),
   aiApiKeyEnv: z.string().default('DASHSCOPE_API_KEY'),
+  aiCookieEnv: z.string().optional(),
+  aiTemperature: z.number().default(0),
+  aiUseJsonResponseFormat: z.boolean().default(true),
   reportDir: z.string().default('target/atr-healer/reports'),
   aiLogDir: z.string().default('target/atr-healer/ai-logs')
 };
@@ -72,10 +75,13 @@ type SelfHealInput = {
   approvalMode: 'report' | 'auto-test-files';
   maxAttempts: number;
   aiProvider: AiProvider;
-  aiProfile: 'default' | 'alibaba-free';
+  aiProfile: 'default' | 'alibaba-free' | 'local-coder';
   aiModel: string;
   aiEndpoint: string;
   aiApiKeyEnv: string;
+  aiCookieEnv?: string;
+  aiTemperature: number;
+  aiUseJsonResponseFormat: boolean;
   reportDir: string;
   aiLogDir: string;
 };
@@ -327,21 +333,7 @@ server.registerTool(
 );
 
 function toOptions(input: SelfHealInput): AtrCliOptions {
-  const defaults = input.aiProfile === 'alibaba-free'
-    ? {
-        maxAttempts: 2,
-        maxCallsPerRun: 2,
-        dailyCallLimit: 20,
-        maxPromptChars: 8000,
-        maxOutputTokens: 800
-      }
-    : {
-        maxAttempts: input.maxAttempts,
-        maxCallsPerRun: input.maxAttempts,
-        dailyCallLimit: 50,
-        maxPromptChars: 12000,
-        maxOutputTokens: 1200
-      };
+  const defaults = profileDefaults(input);
 
   return {
     workspaceRoot: path.resolve(input.workspace),
@@ -351,16 +343,81 @@ function toOptions(input: SelfHealInput): AtrCliOptions {
     htmlFile: input.htmlFile,
     maxAttempts: Math.min(input.maxAttempts, defaults.maxAttempts),
     reportDir: input.reportDir,
-    aiEndpoint: input.aiEndpoint,
-    aiModel: input.aiModel,
+    aiEndpoint: defaults.endpoint,
+    aiModel: defaults.model,
     aiProvider: input.aiProvider,
-    aiApiKeyEnv: input.aiApiKeyEnv,
+    aiApiKeyEnv: defaults.apiKeyEnv,
+    aiCookieEnv: defaults.cookieEnv,
+    aiTemperature: defaults.temperature,
+    aiUseJsonResponseFormat: defaults.useJsonResponseFormat,
     aiMaxCallsPerRun: defaults.maxCallsPerRun,
     aiDailyCallLimit: defaults.dailyCallLimit,
     aiMaxPromptChars: defaults.maxPromptChars,
     aiMaxOutputTokens: defaults.maxOutputTokens,
     aiLogDir: input.aiLogDir,
     approvalMode: input.approvalMode
+  };
+}
+
+function profileDefaults(input: SelfHealInput): {
+  endpoint: string;
+  model: string;
+  apiKeyEnv?: string;
+  cookieEnv?: string;
+  temperature: number;
+  useJsonResponseFormat: boolean;
+  maxAttempts: number;
+  maxCallsPerRun: number;
+  dailyCallLimit: number;
+  maxPromptChars: number;
+  maxOutputTokens: number;
+} {
+  if (input.aiProfile === 'alibaba-free') {
+    return {
+      endpoint: input.aiEndpoint,
+      model: input.aiModel,
+      apiKeyEnv: input.aiApiKeyEnv,
+      cookieEnv: input.aiCookieEnv,
+      temperature: input.aiTemperature,
+      useJsonResponseFormat: input.aiUseJsonResponseFormat,
+      maxAttempts: 2,
+      maxCallsPerRun: 2,
+      dailyCallLimit: 20,
+      maxPromptChars: 8000,
+      maxOutputTokens: 800
+    };
+  }
+
+  if (input.aiProfile === 'local-coder') {
+    return {
+      endpoint: input.aiEndpoint === 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
+        ? process.env.ATR_LOCAL_CODER_ENDPOINT ?? 'http://localhost:8000/v1/chat/completions'
+        : input.aiEndpoint,
+      model: input.aiModel === 'qwen3.7-plus' ? 'ONIKS' : input.aiModel,
+      apiKeyEnv: input.aiApiKeyEnv === 'DASHSCOPE_API_KEY' ? undefined : input.aiApiKeyEnv,
+      cookieEnv: input.aiCookieEnv ?? 'ATR_LOCAL_CODER_COOKIE',
+      temperature: input.aiTemperature === 0 ? 0.6 : input.aiTemperature,
+      useJsonResponseFormat: false,
+      maxAttempts: input.maxAttempts,
+      maxCallsPerRun: 999,
+      dailyCallLimit: 999999,
+      maxPromptChars: 1000000,
+      maxOutputTokens: 163849
+    };
+  }
+
+  return {
+    endpoint: input.aiEndpoint,
+    model: input.aiModel,
+    apiKeyEnv: input.aiApiKeyEnv,
+    cookieEnv: input.aiCookieEnv,
+    temperature: input.aiTemperature,
+    useJsonResponseFormat: input.aiUseJsonResponseFormat,
+    maxAttempts: input.maxAttempts,
+    maxCallsPerRun: input.maxAttempts,
+    dailyCallLimit: 50,
+    maxPromptChars: 12000,
+    maxOutputTokens: 1200
   };
 }
 

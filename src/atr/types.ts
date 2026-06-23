@@ -12,6 +12,9 @@ export interface AtrCliOptions {
   aiModel: string;
   aiProvider: AiProvider;
   aiApiKeyEnv?: string;
+  aiCookieEnv?: string;
+  aiTemperature: number;
+  aiUseJsonResponseFormat: boolean;
   aiMaxCallsPerRun: number;
   aiDailyCallLimit: number;
   aiMaxPromptChars: number;

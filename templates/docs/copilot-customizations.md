@@ -109,6 +109,25 @@ atr_audit_test_ids
 atr_validate_test_artifacts
 ```
 
+## Local Coder LLM
+
+For an internal OpenAI-compatible coder model, configure ATR with environment variables instead of hardcoding private values:
+
+```powershell
+$env:ATR_LOCAL_CODER_ENDPOINT = "https://<local-llm-host>/v1/chat/completions"
+$env:ATR_LOCAL_CODER_COOKIE = "<cookie-name>=<cookie-value>"
+```
+
+Use:
+
+```text
+aiProfile: local-coder
+aiEndpoint: value of ATR_LOCAL_CODER_ENDPOINT
+aiCookieEnv: ATR_LOCAL_CODER_COOKIE
+```
+
+The `local-coder` profile uses model `ONIKS`, temperature `0.6`, high local token budgets, and does not send the OpenAI `response_format` parameter.
+
 ## Safety
 
 - Automatic healing may edit only `src/test/**`.

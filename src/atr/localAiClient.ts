@@ -69,12 +69,17 @@ async function sendMessages(
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
 ): Promise<string> {
   const apiKey = options.aiApiKeyEnv ? process.env[options.aiApiKeyEnv] : undefined;
+  const cookie = options.aiCookieEnv ? process.env[options.aiCookieEnv] : undefined;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
 
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
+  }
+
+  if (cookie) {
+    headers.Cookie = cookie;
   }
 
   const endpoint = resolveEndpoint(options);
@@ -192,29 +197,34 @@ function buildPayload(
         }))
       },
       parameters: {
-        temperature: 0,
+        temperature: options.aiTemperature,
         max_tokens: options.aiMaxOutputTokens
       }
     };
   }
 
   if (options.aiProvider === 'openai-compatible') {
-    return {
+    const payload: Record<string, unknown> = {
       model: options.aiModel,
-      temperature: 0,
+      temperature: options.aiTemperature,
       max_tokens: options.aiMaxOutputTokens,
-      response_format: {
-        type: 'json_object'
-      },
       messages
     };
+
+    if (options.aiUseJsonResponseFormat) {
+      payload.response_format = {
+        type: 'json_object'
+      };
+    }
+
+    return payload;
   }
 
   return {
     model: options.aiModel,
     stream: false,
     options: {
-      temperature: 0,
+      temperature: options.aiTemperature,
       num_predict: options.aiMaxOutputTokens
     },
     messages
