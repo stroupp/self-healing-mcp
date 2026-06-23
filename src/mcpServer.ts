@@ -4,6 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import path from 'path';
+import { validateArtifacts } from './atr/artifactValidator';
 import { loadAtrKnowledge, summarizeKnowledge } from './atr/knowledgeBase';
 import { analyzeProject } from './atr/projectAnalyzer';
 import { selfHeal } from './atr/selfHeal';
@@ -43,8 +44,22 @@ const auditTestIdsSchema = {
   page: z.string().optional().describe('Page name used in proposed data-test-id values.'),
   projectPrefix: z.string().optional().describe('Project prefix used in proposed data-test-id values.'),
   include: z.array(z.string()).default([]).describe('Workspace-relative React files to scan. Empty scans all React files.'),
+  entryFile: z.string().optional().describe('Workspace-relative page entry file. When set with followImports, ATR scans reachable local components.'),
+  followImports: z.boolean().default(false),
   maxFiles: z.number().int().positive().max(500).default(200),
   reportDir: z.string().default('target/atr-healer/reports')
+};
+
+const validateArtifactsSchema = {
+  workspace: z.string().describe('Absolute path to the UI project.'),
+  knowledgeFile: z.string().optional().describe('Optional absolute or workspace-relative knowledge markdown path.'),
+  page: z.string().optional(),
+  projectPrefix: z.string().optional(),
+  include: z.array(z.string()).default([]),
+  entryFile: z.string().optional(),
+  followImports: z.boolean().default(false),
+  feature: z.string().optional().describe('Optional workspace-relative feature file to validate against Java step annotations.'),
+  maxFiles: z.number().int().positive().max(500).default(200)
 };
 
 type SelfHealInput = {
@@ -165,6 +180,8 @@ if (optionalToolsEnabled()) {
       page?: string;
       projectPrefix?: string;
       include: string[];
+      entryFile?: string;
+      followImports: boolean;
       maxFiles: number;
       reportDir: string;
     }): Promise<CallToolResult> => {
@@ -179,6 +196,8 @@ if (optionalToolsEnabled()) {
           pageName: input.page,
           projectPrefix: input.projectPrefix,
           include: input.include,
+          entryFile: input.entryFile,
+          followImports: input.followImports,
           maxFiles: input.maxFiles
         },
         knowledge
@@ -203,6 +222,61 @@ if (optionalToolsEnabled()) {
           ...report,
           reportPath
         })
+      };
+    }
+  );
+
+  server.registerTool(
+    'atr_validate_test_artifacts',
+    {
+      title: 'ATR Validate Test Artifacts',
+      description: 'Validate test-id audit cleanliness and optional feature-step bindings. This tool does not edit files.',
+      inputSchema: validateArtifactsSchema
+    },
+    async (input: {
+      workspace: string;
+      knowledgeFile?: string;
+      page?: string;
+      projectPrefix?: string;
+      include: string[];
+      entryFile?: string;
+      followImports: boolean;
+      feature?: string;
+      maxFiles: number;
+    }): Promise<CallToolResult> => {
+      const workspaceRoot = path.resolve(input.workspace);
+      const knowledge = await loadAtrKnowledge({
+        workspaceRoot,
+        knowledgeFile: input.knowledgeFile
+      });
+      const report = await validateArtifacts(
+        {
+          workspaceRoot,
+          pageName: input.page,
+          projectPrefix: input.projectPrefix,
+          include: input.include,
+          entryFile: input.entryFile,
+          followImports: input.followImports,
+          featureFile: input.feature,
+          maxFiles: input.maxFiles
+        },
+        knowledge
+      );
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: [
+              `ATR validation status: ${report.status}`,
+              `Issues: ${report.issues.length}`,
+              ...report.issues.slice(0, 20).map(issue =>
+                `${issue.severity.toUpperCase()}: ${issue.file ?? 'project'}${issue.line ? `:${issue.line}` : ''} ${issue.message}`
+              )
+            ].join('\n')
+          }
+        ],
+        structuredContent: toStructuredContent(report)
       };
     }
   );

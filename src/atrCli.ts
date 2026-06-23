@@ -1,5 +1,7 @@
 #!/usr/bin/env node
+import { promises as fs } from 'fs';
 import path from 'path';
+import { validateArtifacts } from './atr/artifactValidator';
 import { loadAtrKnowledge, summarizeKnowledge } from './atr/knowledgeBase';
 import { analyzeProject } from './atr/projectAnalyzer';
 import { selfHeal } from './atr/selfHeal';
@@ -7,7 +9,7 @@ import { auditTestIds } from './atr/testIdAuditor';
 import { writeTestIdAuditReport } from './atr/testIdReportWriter';
 import { AiProvider, AtrCliOptions } from './atr/types';
 
-type AtrMode = 'self-heal' | 'knowledge' | 'analyze' | 'audit-test-ids';
+type AtrMode = 'self-heal' | 'knowledge' | 'analyze' | 'audit-test-ids' | 'validate' | 'init' | 'mcp-config';
 
 interface ParsedArgs {
   args: string[];
@@ -34,6 +36,21 @@ async function main(): Promise<void> {
 
   if (parsed.mode === 'audit-test-ids') {
     await runAuditTestIdsMode(parsed.args);
+    return;
+  }
+
+  if (parsed.mode === 'validate') {
+    await runValidateMode(parsed.args);
+    return;
+  }
+
+  if (parsed.mode === 'init') {
+    await runInitMode(parsed.args);
+    return;
+  }
+
+  if (parsed.mode === 'mcp-config') {
+    runMcpConfigMode(parsed.args);
     return;
   }
 
@@ -86,6 +103,8 @@ async function runAuditTestIdsMode(args: string[]): Promise<void> {
       pageName: read('--page'),
       projectPrefix: read('--project-prefix'),
       include: readAll(args, '--include'),
+      entryFile: read('--entry-file'),
+      followImports: read('--follow-imports') === 'true',
       maxFiles: Number(read('--max-files') ?? '200')
     },
     knowledge
@@ -100,6 +119,77 @@ async function runAuditTestIdsMode(args: string[]): Promise<void> {
   console.log(`Report: ${reportPath}`);
 }
 
+async function runValidateMode(args: string[]): Promise<void> {
+  const read = argReader(args);
+  const workspaceRoot = path.resolve(read('--workspace') ?? process.cwd());
+  const knowledge = await loadAtrKnowledge({
+    workspaceRoot,
+    knowledgeFile: read('--knowledge-file')
+  });
+  const report = await validateArtifacts(
+    {
+      workspaceRoot,
+      pageName: read('--page'),
+      projectPrefix: read('--project-prefix'),
+      include: readAll(args, '--include'),
+      entryFile: read('--entry-file'),
+      followImports: read('--follow-imports') === 'true',
+      maxFiles: Number(read('--max-files') ?? '200'),
+      featureFile: read('--feature')
+    },
+    knowledge
+  );
+
+  console.log(JSON.stringify(report, null, 2));
+  if (report.status !== 'passed') {
+    process.exitCode = 1;
+  }
+}
+
+async function runInitMode(args: string[]): Promise<void> {
+  const read = argReader(args);
+  const workspaceRoot = path.resolve(read('--workspace') ?? process.cwd());
+  const force = read('--force') === 'true';
+  const templateRoot = path.resolve(__dirname, '..', 'templates');
+  const files = await listTemplateFiles(templateRoot);
+
+  for (const source of files) {
+    const relative = path.relative(templateRoot, source);
+    const target = path.join(workspaceRoot, relative);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+
+    if (!force && await exists(target)) {
+      console.log(`skip ${relative}`);
+      continue;
+    }
+
+    await fs.copyFile(source, target);
+    console.log(`write ${relative}`);
+  }
+}
+
+function runMcpConfigMode(args: string[]): void {
+  const read = argReader(args);
+  const optionalTools = read('--optional-tools') === 'true';
+  const command = read('--command') ?? 'npx';
+  const argsValue = command === 'npx' ? ['atr-mcp'] : [path.resolve(__dirname, 'mcpServer.js')];
+  const config = {
+    mcpServers: {
+      atr: {
+        command,
+        args: argsValue,
+        env: optionalTools
+          ? {
+              ATR_MCP_ENABLE_OPTIONAL_TOOLS: 'true'
+            }
+          : undefined
+      }
+    }
+  };
+
+  console.log(JSON.stringify(removeUndefined(config), null, 2));
+}
+
 function parseMode(args: string[]): ParsedArgs | undefined {
   if (args.includes('--help') || args.includes('-h')) {
     return undefined;
@@ -109,7 +199,15 @@ function parseMode(args: string[]): ParsedArgs | undefined {
   if (modeIndex >= 0) {
     const mode = args[modeIndex + 1] as AtrMode | undefined;
     const rest = args.filter((_, index) => index !== modeIndex && index !== modeIndex + 1);
-    if (mode === 'self-heal' || mode === 'knowledge' || mode === 'analyze' || mode === 'audit-test-ids') {
+    if (
+      mode === 'self-heal' ||
+      mode === 'knowledge' ||
+      mode === 'analyze' ||
+      mode === 'audit-test-ids' ||
+      mode === 'validate' ||
+      mode === 'init' ||
+      mode === 'mcp-config'
+    ) {
       return {
         mode,
         args: rest
@@ -123,6 +221,52 @@ function parseMode(args: string[]): ParsedArgs | undefined {
     mode: 'self-heal',
     args
   };
+}
+
+async function listTemplateFiles(root: string): Promise<string[]> {
+  const files: string[] = [];
+
+  async function walk(directory: string): Promise<void> {
+    const entries = await fs.readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await walk(absolute);
+      } else if (entry.isFile()) {
+        files.push(absolute);
+      }
+    }
+  }
+
+  await walk(root);
+  return files;
+}
+
+async function exists(file: string): Promise<boolean> {
+  try {
+    await fs.access(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function removeUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map(item => removeUndefined(item)) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    const output: Record<string, unknown> = {};
+    for (const [key, childValue] of Object.entries(value as Record<string, unknown>)) {
+      if (childValue !== undefined) {
+        output[key] = removeUndefined(childValue);
+      }
+    }
+    return output as T;
+  }
+
+  return value;
 }
 
 function parseSelfHealArgs(args: string[]): AtrCliOptions | undefined {
@@ -224,22 +368,32 @@ Usage:
   atr --mode knowledge [options]
   atr --mode analyze [options]
   atr --mode audit-test-ids [options]
+  atr --mode validate [options]
+  atr --mode init [options]
+  atr --mode mcp-config [options]
 
 Modes:
   self-heal       Default. Run, heal, rerun, and report a Cucumber/Selenide scenario.
   knowledge       Print normalized ATR knowledge summary as JSON.
   analyze         Inspect project structure as JSON.
   audit-test-ids  Report missing React data-test-id candidates. Does not edit files.
+  validate        Validate test-id audit cleanliness and optional feature-step bindings.
+  init            Copy ATR Copilot instructions, prompts, agents, and docs into a project.
+  mcp-config      Print MCP configuration JSON.
 
 Common options:
   --workspace        Workspace root. Defaults to current directory.
   --knowledge-file   Optional knowledge markdown path.
   --report-dir       Report output directory. Defaults to target/atr-healer/reports.
+  --force            init mode only. true overwrites existing template files.
+  --optional-tools   mcp-config mode only. true enables optional ATR MCP tools.
 
 Audit options:
   --page             Page name used in proposed IDs.
   --project-prefix   Project prefix used in proposed IDs.
   --include          Workspace-relative React file to scan. Can be repeated.
+  --entry-file       Workspace-relative page entry file to scan.
+  --follow-imports   true to scan local imports reachable from --entry-file.
   --max-files        Max React files to scan. Defaults to 200.
 
 Self-heal required:
@@ -260,6 +414,10 @@ Self-heal options:
 Examples:
   atr --mode analyze --workspace "C:\\project"
   atr --mode audit-test-ids --workspace "C:\\project" --page Transfer --project-prefix transfer --include "src/App.jsx"
+  atr --mode audit-test-ids --workspace "C:\\project" --entry-file "src/pages/Transfer.tsx" --follow-imports true
+  atr --mode validate --workspace "C:\\project" --entry-file "src/pages/Transfer.tsx" --follow-imports true --feature "src/test/resources/features/transfer.feature"
+  atr --mode init --workspace "C:\\project"
+  atr --mode mcp-config --optional-tools true
   atr --test-command "mvn test" --scenario "Successful transfer" --html-file target/failed-page.html --approval-mode auto-test-files
 `);
 }

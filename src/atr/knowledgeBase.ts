@@ -16,7 +16,7 @@ const baseLocator = (suffix: string, selector: string, collection = false): Loca
 
 const defaultComponentRules: ComponentRule[] = [
   {
-    componentNames: ['Button'],
+    componentNames: ['Button', 'IonButton', 'IonFabButton', 'IonItemOption', 'IonBackButton', 'IonChip'],
     typeKey: 'btn',
     locatorTemplates: [
       baseLocator('Element', "[data-test-id='{id}']"),
@@ -25,7 +25,7 @@ const defaultComponentRules: ComponentRule[] = [
     ]
   },
   {
-    componentNames: ['TextInput', 'CurrencyInput', 'EmailInput', 'PhoneInput', 'NumberInput', 'IbanInput', 'AutoComplete'],
+    componentNames: ['TextInput', 'CurrencyInput', 'EmailInput', 'PhoneInput', 'NumberInput', 'IbanInput', 'AutoComplete', 'IonInput', 'IonSearchbar'],
     typeKey: 'input',
     locatorTemplates: [
       baseLocator('Element', "[data-test-id='{id}']"),
@@ -33,7 +33,7 @@ const defaultComponentRules: ComponentRule[] = [
     ]
   },
   {
-    componentNames: ['Select', 'TreeSelect'],
+    componentNames: ['Select', 'TreeSelect', 'IonSelect'],
     typeKey: 'select',
     locatorTemplates: [
       baseLocator('Wrapper', "[data-test-id='{id}']"),
@@ -43,7 +43,7 @@ const defaultComponentRules: ComponentRule[] = [
     ]
   },
   {
-    componentNames: ['Textarea'],
+    componentNames: ['Textarea', 'IonTextarea'],
     typeKey: 'textarea',
     locatorTemplates: [
       baseLocator('Element', "[data-test-id='{id}']"),
@@ -52,7 +52,7 @@ const defaultComponentRules: ComponentRule[] = [
     ]
   },
   {
-    componentNames: ['Modal'],
+    componentNames: ['Modal', 'IonModal', 'IonPopover', 'IonActionSheet'],
     typeKey: 'modal',
     locatorTemplates: [
       baseLocator('Element', "[data-test-id='{id}']"),
@@ -75,7 +75,15 @@ const defaultComponentRules: ComponentRule[] = [
     ]
   },
   {
-    componentNames: ['Checkbox', 'CheckboxGroup'],
+    componentNames: ['IonList'],
+    typeKey: 'table',
+    locatorTemplates: [
+      baseLocator('Element', "[data-test-id='{id}']"),
+      baseLocator('Rows', "[data-test-id='{id}'] ion-item", true)
+    ]
+  },
+  {
+    componentNames: ['Checkbox', 'CheckboxGroup', 'IonCheckbox'],
     typeKey: 'checkbox',
     locatorTemplates: [
       baseLocator('Element', "[data-test-id='{id}']"),
@@ -84,7 +92,7 @@ const defaultComponentRules: ComponentRule[] = [
     ]
   },
   {
-    componentNames: ['Radio', 'RadioGroup', 'RadioSelectionBox'],
+    componentNames: ['Radio', 'RadioGroup', 'RadioSelectionBox', 'IonRadio', 'IonRadioGroup', 'IonSegmentButton'],
     typeKey: 'radio',
     locatorTemplates: [
       baseLocator('Element', "[data-test-id='{id}']"),
@@ -93,7 +101,7 @@ const defaultComponentRules: ComponentRule[] = [
     ]
   },
   {
-    componentNames: ['DatePicker', 'TimePicker'],
+    componentNames: ['DatePicker', 'IonDatetime'],
     typeKey: 'datepicker',
     locatorTemplates: [
       baseLocator('Element', "[data-test-id='{id}']"),
@@ -101,7 +109,15 @@ const defaultComponentRules: ComponentRule[] = [
     ]
   },
   {
-    componentNames: ['Switch'],
+    componentNames: ['TimePicker'],
+    typeKey: 'timepicker',
+    locatorTemplates: [
+      baseLocator('Element', "[data-test-id='{id}']"),
+      baseLocator('Input', "[data-test-id='{id}'] input")
+    ]
+  },
+  {
+    componentNames: ['Switch', 'IonToggle'],
     typeKey: 'switch',
     locatorTemplates: [
       baseLocator('Element', "[data-test-id='{id}']"),
@@ -109,11 +125,75 @@ const defaultComponentRules: ComponentRule[] = [
     ]
   },
   {
-    componentNames: ['Tabs'],
+    componentNames: ['Tabs', 'IonSegment'],
     typeKey: 'tabs',
     locatorTemplates: [
       baseLocator('Element', "[data-test-id='{id}']"),
       baseLocator('TabItems', "[data-test-id='{id}'] .ykb-ui-tabs-tab", true)
+    ]
+  },
+  {
+    componentNames: ['Form'],
+    typeKey: 'form',
+    locatorTemplates: [
+      baseLocator('Element', "[data-test-id='{id}']")
+    ]
+  },
+  {
+    componentNames: ['Menu', 'IonMenu'],
+    typeKey: 'menu',
+    locatorTemplates: [
+      baseLocator('Element', "[data-test-id='{id}']"),
+      baseLocator('Items', "[data-test-id='{id}'] .ykb-ui-menu-item", true)
+    ]
+  },
+  {
+    componentNames: ['Pagination'],
+    typeKey: 'pagination',
+    locatorTemplates: [
+      baseLocator('Element', "[data-test-id='{id}']"),
+      baseLocator('PrevBtn', "[data-test-id='{id}'] .ykb-ui-pagination-prev"),
+      baseLocator('NextBtn', "[data-test-id='{id}'] .ykb-ui-pagination-next")
+    ]
+  },
+  {
+    componentNames: ['Dropdown', 'IonSelectOption'],
+    typeKey: 'dropdown',
+    locatorTemplates: [
+      baseLocator('Element', "[data-test-id='{id}']"),
+      baseLocator('Trigger', "[data-test-id='{id}'] .ykb-ui-dropdown-trigger")
+    ]
+  },
+  {
+    componentNames: ['Upload'],
+    typeKey: 'upload',
+    locatorTemplates: [
+      baseLocator('Element', "[data-test-id='{id}']"),
+      baseLocator('Input', "[data-test-id='{id}'] input[type='file']")
+    ]
+  },
+  {
+    componentNames: ['Steps'],
+    typeKey: 'steps',
+    locatorTemplates: [
+      baseLocator('Element', "[data-test-id='{id}']"),
+      baseLocator('Items', "[data-test-id='{id}'] .ykb-ui-step-item", true)
+    ]
+  },
+  {
+    componentNames: ['YkbMaps', 'Map'],
+    typeKey: 'map',
+    locatorTemplates: [
+      baseLocator('Element', "[data-test-id='{id}']"),
+      baseLocator('Canvas', "[data-test-id='{id}'] canvas"),
+      baseLocator('Controls', "[data-test-id='{id}'] .gm-control-active", true)
+    ]
+  },
+  {
+    componentNames: ['Alert', 'Notification', 'IonAlert', 'IonToast', 'IonLoading'],
+    typeKey: 'alert',
+    locatorTemplates: [
+      baseLocator('Element', "[data-test-id='{id}']")
     ]
   }
 ];

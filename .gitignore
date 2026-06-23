@@ -3,6 +3,13 @@ node_modules/
 
 # Build output
 out/
+target/
+
+# Local demos and generated test reports
+examples/ionic-react-conference-app/
+examples/**/target/
+build/reports/
+*.log
 
 # ATR knowledge file should remain local
 docs/knowledge.md
@@ -19,3 +26,6 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Environment examples
+.env.example

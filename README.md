@@ -27,6 +27,28 @@ Compile ATR:
 npm run compile
 ```
 
+## NPM Package Usage
+
+After ATR is published or packed, users can run it without cloning this repository:
+
+```powershell
+npm install --save-dev atr-healer
+npx atr --mode init
+npx atr --mode mcp-config --optional-tools true
+```
+
+Global install is also possible:
+
+```powershell
+npm install -g atr-healer
+atr --mode init --workspace "C:\path\to\project"
+atr --mode mcp-config --optional-tools true
+```
+
+`atr --mode init` copies lightweight Copilot instructions, prompts, agents, and ATR docs into the target project.
+
+`atr --mode mcp-config` prints MCP configuration JSON that can be pasted into Copilot/Continue MCP settings.
+
 Run the CLI:
 
 ```powershell
