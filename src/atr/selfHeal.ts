@@ -5,6 +5,7 @@ import { suggestLocalLocatorHeal } from './localHealer';
 import { askForHealCandidate } from './localAiClient';
 import { applyCandidate } from './patchApplier';
 import { writeReport } from './reportWriter';
+import { enrichFailureSourceContext } from './sourceContext';
 import { runTestCommand } from './testRunner';
 import { AtrCliOptions, HealAttempt, HealReport } from './types';
 
@@ -16,7 +17,10 @@ export async function selfHeal(options: AtrCliOptions): Promise<HealReport> {
 
   for (let attemptNumber = 1; attemptNumber <= effectiveMaxAttempts; attemptNumber++) {
     const run = await runTestCommand(options, attemptNumber);
-    const failure = parseFailure(run);
+    const parsedFailure = parseFailure(run);
+    const failure = parsedFailure
+      ? await enrichFailureSourceContext(options, parsedFailure)
+      : undefined;
     const attempt: HealAttempt = { run, failure };
     attempts.push(attempt);
 

@@ -34,7 +34,15 @@ export interface FailureContext {
   locator?: string;
   exception?: string;
   stackHint?: string;
+  sourceContext?: SourceContext;
   rawTail: string;
+}
+
+export interface SourceContext {
+  file: string;
+  line: number;
+  methodName?: string;
+  content: string;
 }
 
 export interface HealCandidate {

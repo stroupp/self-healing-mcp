@@ -38,7 +38,17 @@ function renderReport(report: HealReport): string {
       lines.push(`Locator: ${attempt.failure.locator ?? 'unknown'}`);
       lines.push(`Exception: ${attempt.failure.exception ?? 'unknown'}`);
       lines.push(`Stack hint: ${attempt.failure.stackHint ?? 'unknown'}`);
+      if (attempt.failure.sourceContext) {
+        lines.push(`Source context: ${attempt.failure.sourceContext.file}:${attempt.failure.sourceContext.line}`);
+        lines.push(`Method: ${attempt.failure.sourceContext.methodName ?? 'unknown'}`);
+      }
       lines.push('');
+      if (attempt.failure.sourceContext) {
+        lines.push('```java');
+        lines.push(attempt.failure.sourceContext.content);
+        lines.push('```');
+        lines.push('');
+      }
       lines.push('```text');
       lines.push(attempt.failure.rawTail);
       lines.push('```');
@@ -66,4 +76,3 @@ function renderReport(report: HealReport): string {
 
   return `${lines.join('\n')}\n`;
 }
-

@@ -7,9 +7,12 @@ export async function askForHealCandidate(
   htmlSnippet: string | undefined,
   attemptHistory: string
 ): Promise<HealCandidate> {
-  const compactRawTail = tail(failure.rawTail, 2500);
-  const compactHtml = htmlSnippet ? htmlSnippet.slice(0, 3500) : undefined;
-  const compactHistory = tail(attemptHistory || 'none', 1200);
+  const compactRawTail = tail(failure.rawTail, 1400);
+  const compactHtml = htmlSnippet ? htmlSnippet.slice(0, 2400) : undefined;
+  const compactHistory = tail(attemptHistory || 'none', 700);
+  const compactSourceContext = failure.sourceContext
+    ? tail(failure.sourceContext.content, 1600)
+    : undefined;
 
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     {
@@ -35,6 +38,9 @@ export async function askForHealCandidate(
         `Broken locator: ${failure.locator ?? 'unknown'}`,
         `Exception: ${failure.exception ?? 'unknown'}`,
         `Stack hint: ${failure.stackHint ?? 'unknown'}`,
+        `Source context file: ${failure.sourceContext?.file ?? 'unknown'}`,
+        `Source context method: ${failure.sourceContext?.methodName ?? 'unknown'}`,
+        `Source context:\n${compactSourceContext ?? 'not available'}`,
         `Failure output tail:\n${compactRawTail}`,
         `HTML snippet:\n${compactHtml ?? 'not provided'}`,
         `Previous attempts:\n${compactHistory}`
