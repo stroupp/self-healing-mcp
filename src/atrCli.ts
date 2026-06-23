@@ -302,6 +302,7 @@ function parseSelfHealArgs(args: string[]): AtrCliOptions | undefined {
     aiDailyCallLimit: Number(read('--ai-daily-call-limit') ?? defaults.dailyCallLimit),
     aiMaxPromptChars: Number(read('--ai-max-prompt-chars') ?? defaults.maxPromptChars),
     aiMaxOutputTokens: Number(read('--ai-max-output-tokens') ?? defaults.maxOutputTokens),
+    aiLogDir: read('--ai-log-dir') ?? 'target/atr-healer/ai-logs',
     approvalMode: read('--approval-mode') === 'auto-test-files' ? 'auto-test-files' : 'report'
   };
 }
@@ -409,6 +410,7 @@ Self-heal options:
   --ai-provider      ollama, openai-compatible, or dashscope. Defaults to ollama.
   --ai-profile       Optional preset. Use alibaba-free for conservative Alibaba/Qwen limits.
   --ai-api-key-env   Environment variable containing API key.
+  --ai-log-dir       Directory for one JSON log per AI API request. Defaults to target/atr-healer/ai-logs.
   --approval-mode    report or auto-test-files. Defaults to report.
 
 Examples:

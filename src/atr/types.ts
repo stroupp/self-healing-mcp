@@ -16,6 +16,7 @@ export interface AtrCliOptions {
   aiDailyCallLimit: number;
   aiMaxPromptChars: number;
   aiMaxOutputTokens: number;
+  aiLogDir: string;
   approvalMode: 'report' | 'auto-test-files';
 }
 

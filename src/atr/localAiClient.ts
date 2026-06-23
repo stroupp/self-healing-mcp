@@ -1,4 +1,5 @@
 import { AiProvider, AtrCliOptions, FailureContext, HealCandidate } from './types';
+import { writeAiCallLog } from './aiCallLogger';
 import { assertAiBudget, recordAiCall } from './usageGuard';
 
 export async function askForHealCandidate(
@@ -76,18 +77,79 @@ async function sendMessages(
     headers.Authorization = `Bearer ${apiKey}`;
   }
 
-  const response = await fetch(resolveEndpoint(options), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(buildPayload(options, messages))
-  });
+  const endpoint = resolveEndpoint(options);
+  const requestPayload = buildPayload(options, messages);
+  const promptChars = messages.reduce((total, message) => total + message.content.length, 0);
+  const startedAt = new Date().toISOString();
+  const started = Date.now();
 
-  if (!response.ok) {
-    throw new Error(`AI request failed with ${response.status}: ${await response.text()}`);
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestPayload)
+    });
+  } catch (error) {
+    const finishedAt = new Date().toISOString();
+    await writeAiCallLog(options, {
+      startedAt,
+      finishedAt,
+      durationMs: Date.now() - started,
+      endpoint,
+      requestPayload,
+      error: error instanceof Error ? error.message : String(error),
+      promptChars
+    });
+    throw error;
   }
 
-  const json = await response.json() as unknown;
-  return extractContent(options.aiProvider, json);
+  const responseText = await response.text();
+  const responseBody = parseJsonResponse(responseText);
+
+  if (!response.ok) {
+    const finishedAt = new Date().toISOString();
+    await writeAiCallLog(options, {
+      startedAt,
+      finishedAt,
+      durationMs: Date.now() - started,
+      endpoint,
+      requestPayload,
+      responseStatus: response.status,
+      responseOk: response.ok,
+      responseBody,
+      responseText,
+      error: `AI request failed with ${response.status}`,
+      promptChars
+    });
+    throw new Error(`AI request failed with ${response.status}: ${responseText}`);
+  }
+
+  const content = extractContent(options.aiProvider, responseBody);
+  const finishedAt = new Date().toISOString();
+  await writeAiCallLog(options, {
+    startedAt,
+    finishedAt,
+    durationMs: Date.now() - started,
+    endpoint,
+    requestPayload,
+    responseStatus: response.status,
+    responseOk: response.ok,
+    responseBody,
+    responseText: responseBody ? undefined : responseText,
+    extractedContent: content,
+    promptChars
+  });
+
+  return content;
+}
+
+function parseJsonResponse(responseText: string): unknown {
+  try {
+    return JSON.parse(responseText) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 function resolveEndpoint(options: AtrCliOptions): string {

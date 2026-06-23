@@ -25,7 +25,8 @@ const selfHealSchema = {
   aiModel: z.string().default('qwen3.7-plus'),
   aiEndpoint: z.string().default('https://dashscope-intl.aliyuncs.com/compatible-mode/v1'),
   aiApiKeyEnv: z.string().default('DASHSCOPE_API_KEY'),
-  reportDir: z.string().default('target/atr-healer/reports')
+  reportDir: z.string().default('target/atr-healer/reports'),
+  aiLogDir: z.string().default('target/atr-healer/ai-logs')
 };
 
 const knowledgeSchema = {
@@ -76,6 +77,7 @@ type SelfHealInput = {
   aiEndpoint: string;
   aiApiKeyEnv: string;
   reportDir: string;
+  aiLogDir: string;
 };
 
 const server = new McpServer(
@@ -357,6 +359,7 @@ function toOptions(input: SelfHealInput): AtrCliOptions {
     aiDailyCallLimit: defaults.dailyCallLimit,
     aiMaxPromptChars: defaults.maxPromptChars,
     aiMaxOutputTokens: defaults.maxOutputTokens,
+    aiLogDir: input.aiLogDir,
     approvalMode: input.approvalMode
   };
 }
